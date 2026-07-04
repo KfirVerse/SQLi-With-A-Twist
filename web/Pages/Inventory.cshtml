@@ -1,0 +1,109 @@
+@page "/inventory"
+@model SqliRceLab.Pages.InventoryModel
+@{
+    ViewData["Title"] = "Ad Inventory";
+    ViewData["ActivePage"] = "search";
+}
+
+<style>
+    .searchbar { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;
+        background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+    .searchbar .field { display:flex; flex-direction:column; gap:6px; }
+    .searchbar label { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); }
+    .searchbar input[type=text] { min-width:340px; }
+    .searchbar input { background:var(--bg); border:1px solid var(--line);
+        color:var(--text); padding:9px 12px; border-radius:8px; font-size:14px; }
+    .searchbar button { background:linear-gradient(135deg,var(--brand),#7a6cff); border:0; color:#fff;
+        padding:10px 20px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+    .searchbar button:hover { filter:brightness(1.07); }
+    .hint { color:var(--muted); font-size:12px; margin:12px 2px 0; }
+    .hint code { background:var(--panel2); padding:2px 6px; border-radius:5px; }
+    .err { padding:16px 18px; color:#ffb4bb; font-family:Consolas,monospace; font-size:13px; white-space:pre-wrap; word-break:break-word; }
+    .empty { padding:20px 18px; color:var(--muted); }
+    td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+</style>
+
+<div class="searchbar">
+    <form id="searchForm" autocomplete="off" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="field">
+            <label for="price">Search by price</label>
+            <input type="text" id="price" name="price" placeholder="e.g. 10" />
+        </div>
+        <button type="submit">Search</button>
+    </form>
+</div>
+<div class="hint">
+    Prefix match on price. UI calls <code>/search?price=</code> (returns matching prices as
+    comma-separated text) and maps them to products below. On a DB error the raw message is shown.
+</div>
+
+<div class="panel mt16">
+    <div class="hd"><h2>Inventory</h2><span class="sub" id="meta"></span></div>
+    <div class="bd" id="out"></div>
+</div>
+
+<script>
+    (function () {
+        var PRODUCTS = @Html.Raw(Model.ProductsJson);
+        var form = document.getElementById('searchForm');
+        var out = document.getElementById('out');
+        var meta = document.getElementById('meta');
+
+        function esc(v) {
+            return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function renderRows(rows) {
+            if (!rows.length) { out.innerHTML = '<div class="empty">No inventory matched.</div>'; return; }
+            var html = '<table><thead><tr><th>id</th><th class="num">price</th><th>name</th></tr></thead><tbody>';
+            for (var i = 0; i < rows.length; i++) {
+                html += '<tr><td>' + esc(rows[i].id) + '</td><td class="num">' + esc(rows[i].price) +
+                        '</td><td>' + esc(rows[i].name) + '</td></tr>';
+            }
+            html += '</tbody></table>';
+            out.innerHTML = html;
+        }
+
+        // initial: show the full inventory table
+        meta.textContent = PRODUCTS.length + ' products';
+        renderRows(PRODUCTS);
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var price = document.getElementById('price').value;
+            out.innerHTML = '<div class="empty">Loading...</div>';
+            meta.textContent = '';
+
+            var status = 0;
+            fetch('/search?price=' + encodeURIComponent(price)).then(function (res) {
+                status = res.status;
+                return res.text();
+            }).then(function (body) {
+                if (status !== 200) {
+                    meta.textContent = 'HTTP ' + status + ' (SQL error)';
+                    out.innerHTML = '<div class="err">' + esc(body) + '</div>';
+                    return;
+                }
+                var vals = body === '' ? [] : body.split(',');
+                var rows = [];
+                var seen = {};
+                for (var i = 0; i < vals.length; i++) {
+                    var v = vals[i];
+                    var matched = PRODUCTS.filter(function (p) { return p.price === v; });
+                    if (matched.length) {
+                        for (var j = 0; j < matched.length; j++) {
+                            if (!seen[matched[j].id]) { seen[matched[j].id] = 1; rows.push(matched[j]); }
+                        }
+                    } else {
+                        // value returned by the query that is not a known price (e.g. injected data)
+                        rows.push({ id: '—', price: v, name: '—' });
+                    }
+                }
+                meta.textContent = vals.length + ' value(s)';
+                renderRows(rows);
+            }).catch(function (err) {
+                out.innerHTML = '<div class="err">' + esc(err.message) + '</div>';
+            });
+        });
+    })();
+</script>

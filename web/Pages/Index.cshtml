@@ -1,0 +1,132 @@
+@page "/"
+@model SqliRceLab.Pages.IndexModel
+@{
+    ViewData["Title"] = "Dashboard";
+    ViewData["ActivePage"] = "dashboard";
+    var maxSpend = DemoData.Spend7d.Max(d => d.Amount);
+    var top = DemoData.Campaigns.OrderByDescending(c => c.Spend).Take(6).ToList();
+    string Badge(string s) => s switch
+    {
+        "Active" => "badge b-active",
+        "Paused" => "badge b-paused",
+        _ => "badge b-ended"
+    };
+}
+
+<style>
+    .chart { display:flex; align-items:flex-end; gap:18px; height:170px; padding:18px 20px 8px; }
+    .chart .col { flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; height:100%; justify-content:flex-end; }
+    .chart .bar { width:70%; border-radius:6px 6px 0 0;
+        background:linear-gradient(180deg,var(--brand2),var(--brand)); }
+    .chart .day { color:var(--muted); font-size:12px; }
+    .mix { padding:8px 18px 16px; }
+    .mix .r { padding:10px 0; border-bottom:1px solid var(--line); }
+    .mix .r:last-child { border-bottom:0; }
+    .mix .top { display:flex; justify-content:space-between; margin-bottom:7px; font-size:13px; }
+    .mix .track { height:8px; background:var(--panel2); border-radius:999px; overflow:hidden; }
+    .mix .fill { height:100%; background:linear-gradient(90deg,var(--brand),#9b7bff); border-radius:999px; }
+    .feed { padding:6px 18px 12px; }
+    .feed .i { display:flex; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+    .feed .i:last-child { border-bottom:0; }
+    .feed .dot { width:8px; height:8px; border-radius:50%; background:var(--brand); margin-top:6px; flex:0 0 8px; }
+    .feed .when { color:var(--muted); font-size:12px; }
+</style>
+
+<div class="grid cards">
+    <div class="card kpi">
+        <div class="label">Impressions</div>
+        <div class="value">@DemoData.TotalImpressions.ToString("N0")</div>
+        <div class="delta up">▲ 8.2% vs last period</div>
+    </div>
+    <div class="card kpi">
+        <div class="label">Clicks</div>
+        <div class="value">@DemoData.TotalClicks.ToString("N0")</div>
+        <div class="delta up">▲ 5.1% vs last period</div>
+    </div>
+    <div class="card kpi">
+        <div class="label">Avg CTR</div>
+        <div class="value">@DemoData.AvgCtr.ToString("0.00")%</div>
+        <div class="delta down">▼ 0.3% vs last period</div>
+    </div>
+    <div class="card kpi">
+        <div class="label">Spend</div>
+        <div class="value">$@DemoData.TotalSpend.ToString("N0")</div>
+        <div class="delta up">▲ 12.4% vs last period</div>
+    </div>
+</div>
+
+<div class="panel mt16">
+    <div class="hd">
+        <h2>Spend — last 7 days</h2>
+        <span class="sub">@DemoData.ActiveCount active campaigns</span>
+    </div>
+    <div class="chart">
+        @foreach (var d in DemoData.Spend7d)
+        {
+            var h = (int)(d.Amount / maxSpend * 140);
+            <div class="col">
+                <div class="bar" style="height:@(h)px" title='$@d.Amount.ToString("N0")'></div>
+                <div class="day">@d.Day</div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="row2 mt16">
+    <div class="panel">
+        <div class="hd">
+            <h2>Top campaigns</h2>
+            <a class="sub" href="/campaigns">View all →</a>
+        </div>
+        <div class="bd">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Campaign</th><th>Channel</th><th>Status</th>
+                        <th class="num">Clicks</th><th class="num">Spend</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in top)
+                    {
+                        <tr>
+                            <td>@c.Name<div class="muted" style="font-size:12px">@c.Advertiser</div></td>
+                            <td>@c.Channel</td>
+                            <td><span class="@Badge(c.Status)">@c.Status</span></td>
+                            <td class="num">@c.Clicks.ToString("N0")</td>
+                            <td class="num">$@c.Spend.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div>
+        <div class="panel">
+            <div class="hd"><h2>Channel mix</h2></div>
+            <div class="mix">
+                @foreach (var ch in DemoData.Channels)
+                {
+                    <div class="r">
+                        <div class="top"><span>@ch.Name</span><span class="muted">$@ch.Spend.ToString("N0") · @ch.Pct%</span></div>
+                        <div class="track"><div class="fill" style="width:@(ch.Pct)%"></div></div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="panel mt16">
+            <div class="hd"><h2>Recent activity</h2></div>
+            <div class="feed">
+                @foreach (var a in DemoData.Activity)
+                {
+                    <div class="i">
+                        <div class="dot"></div>
+                        <div><div>@a.Text</div><div class="when">@a.When</div></div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

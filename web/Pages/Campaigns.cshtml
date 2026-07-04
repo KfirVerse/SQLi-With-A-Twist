@@ -1,0 +1,70 @@
+@page "/campaigns"
+@model SqliRceLab.Pages.CampaignsModel
+@{
+    ViewData["Title"] = "Campaigns";
+    ViewData["ActivePage"] = "campaigns";
+    string Badge(string s) => s switch
+    {
+        "Active" => "badge b-active",
+        "Paused" => "badge b-paused",
+        _ => "badge b-ended"
+    };
+}
+
+<style>
+    .toolbar { display:flex; gap:12px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+    .toolbar input { background:var(--panel); border:1px solid var(--line); color:var(--text);
+        padding:9px 12px; border-radius:8px; min-width:280px; font-size:14px; }
+    .toolbar .count { color:var(--muted); font-size:13px; margin-left:auto; }
+</style>
+
+<div class="toolbar">
+    <input id="filter" type="text" placeholder="Filter campaigns (client-side)…"
+           oninput="filterRows()" autocomplete="off" />
+    <span class="count"><span id="shown">@DemoData.Campaigns.Count</span> of @DemoData.Campaigns.Count campaigns</span>
+</div>
+
+<div class="panel">
+    <div class="bd">
+        <table id="tbl">
+            <thead>
+                <tr>
+                    <th>ID</th><th>Campaign</th><th>Advertiser</th><th>Channel</th><th>Status</th>
+                    <th class="num">Impressions</th><th class="num">Clicks</th>
+                    <th class="num">CTR</th><th class="num">Spend</th><th class="num">CPC</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in DemoData.Campaigns)
+                {
+                    <tr>
+                        <td class="muted">@c.Id</td>
+                        <td>@c.Name</td>
+                        <td>@c.Advertiser</td>
+                        <td>@c.Channel</td>
+                        <td><span class="@Badge(c.Status)">@c.Status</span></td>
+                        <td class="num">@c.Impressions.ToString("N0")</td>
+                        <td class="num">@c.Clicks.ToString("N0")</td>
+                        <td class="num">@c.Ctr.ToString("0.00")%</td>
+                        <td class="num">$@c.Spend.ToString("N0")</td>
+                        <td class="num">$@c.Cpc.ToString("0.00")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function filterRows() {
+        var q = document.getElementById('filter').value.toLowerCase();
+        var rows = document.querySelectorAll('#tbl tbody tr');
+        var shown = 0;
+        rows.forEach(function (r) {
+            var match = r.innerText.toLowerCase().indexOf(q) !== -1;
+            r.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+        document.getElementById('shown').innerText = shown;
+    }
+</script>
