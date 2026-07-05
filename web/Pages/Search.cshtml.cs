@@ -47,21 +47,14 @@ public class SearchModel : PageModel
 
         var values = new List<string>();
 
-        // Read every result set so stacked queries (RCE) fully execute.
-        do
+        // BLIND: return only the FIRST result set. Stacked statements still run
+        // (INSERT..EXEC xp_cmdshell, or a direct EXEC xp_cmdshell), but result
+        // sets they produce are drained and DISCARDED — command output never
+        // comes back in the response. Exfiltration must use the error channel.
+        while (reader.Read())
         {
-            while (reader.Read())
+            for (var i = 0; i < reader.FieldCount; i++)
             {
-                for (var i = 0; i < reader.FieldCount; i++)
-                {
-                    values.Add(reader.IsDBNull(i)
-                        ? string.Empty
-                        : Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture) ?? string.Empty);
-                }
-            }
-        }
-        while (reader.NextResult());
-
-        return Content(string.Join(",", values), "text/plain; charset=utf-8");
-    }
-}
+                values.Add(reader.IsDBNull(i)
+                    ? string.Empty
+                    : Convert.ToString(reader.GetValue(i), CultureInfo.Inva

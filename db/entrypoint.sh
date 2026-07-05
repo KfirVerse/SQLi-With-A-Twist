@@ -38,6 +38,13 @@ if [[ -z "${SQLCMD}" ]]; then
 fi
 echo "Using sqlcmd: ${SQLCMD} ${SQLCMD_TLS[*]:-}"
 
+# ---- CTF flag: reachable ONLY via RCE --------------------------------------
+# The real flag is a file in SQL Server's working directory. Extracting the
+# database via SQLi only reveals the decoy (VaultDb.dbo.Flag); the real flag is
+# found by running OS commands through xp_cmdshell (e.g. `ls`, `cat Flag.txt`).
+printf 'This Is The KfirVerse flag - Congrats :)\n' > /var/opt/mssql/Flag.txt 2>/dev/null || true
+cd /var/opt/mssql
+
 # ---- Start SQL Server in the background ------------------------------------
 echo "Starting SQL Server..."
 /opt/mssql/bin/sqlservr &

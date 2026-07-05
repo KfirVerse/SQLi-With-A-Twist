@@ -97,16 +97,76 @@ GO
 PRINT 'Seeded dbo.products.';
 GO
 
-/* 3. Enable xp_cmdshell (DELIBERATE MISCONFIGURATION) --------------------- */
+/* 2b. Second database (CTF) — reachable via SQLi because webapp is sysadmin.
+       The dbo.Flag table here is a DECOY: extracting it via SQLi only yields a
+       taunt. The REAL flag is a file on disk, reachable only via RCE. --------- */
+IF DB_ID('VaultDb') IS NULL
+BEGIN
+    PRINT 'Creating database VaultDb...';
+    CREATE DATABASE VaultDb;
+END
+GO
+
+USE VaultDb;
+GO
+
+IF OBJECT_ID('dbo.Users','U')   IS NOT NULL DROP TABLE dbo.Users;
+IF OBJECT_ID('dbo.ApiKeys','U') IS NOT NULL DROP TABLE dbo.ApiKeys;
+IF OBJECT_ID('dbo.Flag','U')    IS NOT NULL DROP TABLE dbo.Flag;
+GO
+
+CREATE TABLE dbo.Users (
+    id       INT IDENTITY(1,1) PRIMARY KEY,
+    username NVARCHAR(100) NOT NULL,
+    email    NVARCHAR(200) NULL,
+    role     NVARCHAR(50)  NULL
+);
+CREATE TABLE dbo.ApiKeys (
+    id      INT IDENTITY(1,1) PRIMARY KEY,
+    service NVARCHAR(100) NOT NULL,
+    api_key NVARCHAR(200) NOT NULL
+);
+CREATE TABLE dbo.Flag (
+    id   INT IDENTITY(1,1) PRIMARY KEY,
+    note NVARCHAR(400) NOT NULL
+);
+GO
+
+INSERT INTO dbo.Users (username, email, role) VALUES
+(N'admin',    N'admin@example.com',   N'superadmin'),
+(N'analyst',  N'analyst@example.com', N'analyst'),
+(N'svc_jobs', N'jobs@example.com',    N'service');
+
+INSERT INTO dbo.ApiKeys (service, api_key) VALUES
+(N'billing', N'EXAMPLE-FAKE-KEY-0001-not-a-real-key'),
+(N'mailer',  N'EXAMPLE-FAKE-KEY-0002-not-a-real-key');
+
+INSERT INTO dbo.Flag (note) VALUES
+(N'Nice try but the flag will be found with more effort');
+GO
+
+USE StoreDb;
+GO
+
+PRINT 'Seeded VaultDb (decoy Flag).';
+GO
+
+/* 3. Enable xp_cmdshell + drop the real flag (WINDOWS) --------------------
+      xp_cmdshell is supported ONLY on SQL Server on Windows. On Linux/Docker
+      this whole block is skipped (the option is unsupported -> CATCH), and the
+      container entrypoint writes /var/opt/mssql/Flag.txt instead. */
 BEGIN TRY
     EXEC sp_configure 'show advanced options', 1; RECONFIGURE;
     EXEC sp_configure 'xp_cmdshell', 1;           RECONFIGURE;
     PRINT 'xp_cmdshell enabled.';
+    -- Real flag in xp_cmdshell's working directory (Windows: the SQL Binn dir).
+    EXEC xp_cmdshell 'echo This Is The KfirVerse flag - Congrats :)>C:\Users\Public\Flag.txt';
+    PRINT 'Flag.txt written via xp_cmdshell (Windows).';
 END TRY
 BEGIN CATCH
-    PRINT '!! WARNING: could not enable xp_cmdshell on this image.';
+    PRINT '!! xp_cmdshell not available (expected on SQL Server on Linux).';
     PRINT '!!   ' + ERROR_MESSAGE();
-    PRINT '!! Use a SQL Server 2019 CU21+ image (e.g. 2019-latest) for the RCE step.';
+    PRINT '!! On Linux the container entrypoint writes /var/opt/mssql/Flag.txt.';
 END CATCH
 GO
 
@@ -114,19 +174,4 @@ GO
 IF SUSER_ID('webapp') IS NULL
 BEGIN
     PRINT 'Creating login webapp...';
-    CREATE LOGIN webapp WITH PASSWORD = N'$(WEBAPP_PASSWORD)', CHECK_POLICY = OFF;
-END
-ELSE
-BEGIN
-    PRINT 'Resetting password for login webapp...';
-    ALTER LOGIN webapp WITH PASSWORD = N'$(WEBAPP_PASSWORD)';
-END
-GO
-
-ALTER SERVER ROLE sysadmin ADD MEMBER webapp;
-GO
-
-PRINT '============================================================';
-PRINT ' StoreDb ready: dbo.products, login webapp (sysadmin), xp_cmdshell';
-PRINT '============================================================';
-GO
+    CREATE LOGIN webapp WITH
