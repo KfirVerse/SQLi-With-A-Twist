@@ -57,4 +57,10 @@ public class SearchModel : PageModel
             {
                 values.Add(reader.IsDBNull(i)
                     ? string.Empty
-                    : Convert.ToString(reader.GetValue(i), CultureInfo.Inva
+                    : Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture) ?? string.Empty);
+            }
+        }
+
+        return Content(string.Join(",", values), "text/plain; charset=utf-8");
+    }
+}

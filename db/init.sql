@@ -174,4 +174,19 @@ GO
 IF SUSER_ID('webapp') IS NULL
 BEGIN
     PRINT 'Creating login webapp...';
-    CREATE LOGIN webapp WITH
+    CREATE LOGIN webapp WITH PASSWORD = N'$(WEBAPP_PASSWORD)', CHECK_POLICY = OFF;
+END
+ELSE
+BEGIN
+    PRINT 'Resetting password for login webapp...';
+    ALTER LOGIN webapp WITH PASSWORD = N'$(WEBAPP_PASSWORD)';
+END
+GO
+
+ALTER SERVER ROLE sysadmin ADD MEMBER webapp;
+GO
+
+PRINT '============================================================';
+PRINT ' StoreDb ready: dbo.products, login webapp (sysadmin), xp_cmdshell';
+PRINT '============================================================';
+GO
