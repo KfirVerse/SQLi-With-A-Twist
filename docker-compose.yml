@@ -1,63 +1,31 @@
 # ============================================================================
-#  SQLi With A Twist  -  orchestration
-#  ---------------------------------------------------------------------------
-#  ONE COMMAND:  docker compose up --build
+#  SQLi With A Twist  -  the lab web app (Docker).
+#  The DATABASE runs on your Windows host (SQL Server Developer Edition).
+#  This file starts ONLY the web app and points it at the host database.
+#  Setup + seeding: see README.md.
+#
+#  ONE COMMAND (after the DB is seeded):  docker compose up --build
 #  Then browse to http://localhost:8080
 #
-#  SAFETY: both services are published on 127.0.0.1 ONLY.  This stack is
-#  intentionally vulnerable - never bind it to a public interface.
+#  SAFETY: the web app publishes on 127.0.0.1 ONLY. Intentionally vulnerable —
+#  never bind it to a public interface.
 # ============================================================================
 name: sqli-with-a-twist
 
 services:
-  # ---- SQL Server 2019 (intentionally misconfigured) -----------------------
-  db:
-    build:
-      context: ./db
-    image: sqli-lab-db
-    container_name: sqli_lab_db
-    environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "${SA_PASSWORD}"
-      SA_PASSWORD: "${SA_PASSWORD}"
-      WEBAPP_PASSWORD: "${WEBAPP_PASSWORD}"
-    ports:
-      - "127.0.0.1:1433:1433"   # localhost only
-    healthcheck:
-      # "Healthy" only once seeding is finished (StoreDb + webapp login exist),
-      # so the web service never starts against a half-initialised database.
-      test: >-
-        /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -b
-        -Q "SET NOCOUNT ON; IF DB_ID('StoreDb') IS NOT NULL AND SUSER_ID('webapp') IS NOT NULL SELECT 1 ELSE THROW 50000,'seeding',1;"
-      interval: 10s
-      timeout: 5s
-      retries: 18
-      start_period: 45s
-    networks:
-      - labnet
-
-  # ---- ASP.NET Core 8 web front end (the vulnerable app) -------------------
   web:
     build:
       context: ./web
     image: sqli-lab-web
     container_name: sqli_lab_web
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       ASPNETCORE_URLS: "http://+:8080"
-      # App connects as the over-privileged `webapp` (sysadmin) login.
-      ConnectionStrings__StoreDb: "Server=db,1433;Database=StoreDb;User ID=webapp;Password=${WEBAPP_PASSWORD};Encrypt=False;TrustServerCertificate=True"
+      # Connects to SQL Server running on the Windows host, as the webapp login.
+      ConnectionStrings__StoreDb: "Server=host.docker.internal,1433;Database=StoreDb;User ID=webapp;Password=${WEBAPP_PASSWORD};Encrypt=False;TrustServerCertificate=True"
       # Cosmetic IIS/ASP.NET response headers for realistic Burp screenshots.
       FakeIisHeaders: "true"
     ports:
       - "127.0.0.1:8080:8080"   # localhost only
-    networks:
-      - labnet
-
-networks:
-  labnet:
-    driver: bridge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

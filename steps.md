@@ -1,6 +1,6 @@
 # Solution — SQLi With A Twist (spoilers)
 
-> ⚠️ Authorized, local, educational use only. This walkthrough follows the **Windows database** setup (Path A in the README), so the commands are Windows (`dir`, `type`) and the flag lives at `C:\Users\Public\Flag.txt`.
+> ⚠️ Authorized, local, educational use only. This walkthrough follows the **Windows database** setup (see README), so the commands are Windows (`dir`, `type`) and the flag lives at `C:\Users\Public\Flag.txt`.
 
 **Target:** the price search — `GET http://localhost:8080/search?price=<PAYLOAD>` (the `/inventory` box hits the same endpoint).
 **Why the payloads look the way they do:** `price` is concatenated inside `LIKE '<price>%'`, so every payload opens with `'` and ends with `--`. The response is plain text: matching prices as CSV, or an HTTP 500 whose body is the raw SQL error — that error is the extraction channel.
