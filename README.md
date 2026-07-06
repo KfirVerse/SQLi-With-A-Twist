@@ -16,7 +16,7 @@ Solution write-up (spoilers): [`steps.md`](steps.md) (English) · [`steps-hebrew
 
 ## How it runs
 
-The database (Microsoft SQL Server) runs on your **Windows** machine. The lab web app runs in **Docker** and connects to that database. Set up the database once, then one `docker compose up` starts the lab. Same steps for everyone — nothing to choose.
+The database (Microsoft SQL Server) runs on your **Windows** machine. The lab web app runs in **Docker** and connects to it. Install the tools once, seed the database, then one `docker compose up` starts the lab. Same steps for everyone — nothing to choose.
 
 Why Windows: the final step uses `xp_cmdshell`, which only works on SQL Server on Windows.
 
@@ -25,63 +25,90 @@ Why Windows: the final step uses `xp_cmdshell`, which only works on SQL Server o
   http://localhost:8080               StoreDb, VaultDb, the flag
 ```
 
----
-
-## Requirements
-
-- **Windows** (a throwaway VM is perfect).
-- **SQL Server Developer Edition** (free) + **sqlcmd** (comes with SSMS).
-- **Docker Desktop**.
-- ~4 GB free disk.
+**You need:** Windows 10/11 (a throwaway VM is perfect) and ~8 GB free disk. Everything else is installed below.
 
 ---
 
-## Setup — do these in order
+## 1. Install everything (winget — all from the terminal)
 
-### 1. Install SQL Server
+`winget` is the built-in Windows package manager (Windows 10/11). Open **Terminal / CMD as Administrator** and run these one by one:
 
-Download **SQL Server 2022 (or 2019) Developer** — free: https://www.microsoft.com/sql-server/sql-server-downloads
-Run the installer → **Basic**. Then install **SSMS** (it brings `sqlcmd`).
+```cmd
+winget install -e --id Git.Git
+winget install -e --id Docker.DockerDesktop
+winget install -e --id Microsoft.SQLServer.2022.Developer
+winget install -e --id Microsoft.SQLServerManagementStudio
+```
 
-### 2. Let Docker reach the database
+That installs Git, Docker Desktop, SQL Server 2022 Developer (free), and SSMS.
 
-The web app is in Docker, so the database must accept TCP logins:
+Then:
 
-1. Open **SQL Server Configuration Manager** → *SQL Server Network Configuration* → *Protocols for MSSQLSERVER* → enable **TCP/IP**.
-2. Still in TCP/IP → *IP Addresses* → *IPAll* → set **TCP Port = 1433**.
-3. Open **SSMS** → right-click the server → *Properties* → *Security* → pick **"SQL Server and Windows Authentication mode"**.
-4. Restart the **SQL Server (MSSQLSERVER)** service (Configuration Manager → *SQL Server Services*).
-5. Allow inbound **TCP 1433** through Windows Firewall.
+- **Reboot** (Docker Desktop needs WSL2), then **start Docker Desktop** once and let it finish first-run setup (wait until the whale icon is steady).
+- `sqlcmd` comes with SSMS. If step 4 says it's missing, find and install it: `winget search sqlcmd`.
+- No `winget`? Install **App Installer** from the Microsoft Store, then reopen the terminal.
+- Prefer clicking instead of winget? Direct downloads: [SQL Server Developer](https://www.microsoft.com/sql-server/sql-server-downloads) · [SSMS](https://aka.ms/ssms) · [Docker Desktop](https://www.docker.com/products/docker-desktop/) · [Git](https://git-scm.com/download/win).
 
-### 3. Get the code
+The SQL Server install creates a default instance named **MSSQLSERVER**. Next, switch on network access.
 
-```powershell
+---
+
+## 2. Configure SQL Server (turn on TCP + SQL logins)
+
+The web app runs in Docker, so SQL Server must accept TCP logins:
+
+1. Open **SQL Server Configuration Manager** (installed with SQL Server; search the Start menu).
+2. *SQL Server Network Configuration* → *Protocols for MSSQLSERVER* → right-click **TCP/IP** → **Enable**.
+3. Double-click **TCP/IP** → *IP Addresses* tab → scroll to **IPAll** → set **TCP Port = 1433**.
+4. Open **SSMS**, connect to `localhost` → right-click the server → *Properties* → *Security* → choose **"SQL Server and Windows Authentication mode"** → OK.
+5. Back in Configuration Manager → *SQL Server Services* → right-click **SQL Server (MSSQLSERVER)** → **Restart**.
+6. Open the firewall port (admin CMD):
+
+```cmd
+netsh advfirewall firewall add rule name="SQL 1433" dir=in action=allow protocol=TCP localport=1433
+```
+
+---
+
+## 3. Get the code
+
+```cmd
 git clone https://github.com/KfirVerse/SQLi-With-A-Twist.git
 cd SQLi-With-A-Twist
 copy .env.example .env
 ```
 
-`.env` holds fictional passwords. Leave them as-is.
+`.env` holds fictional passwords — leave them as-is.
 
-### 4. Build the database
+---
+
+## 4. Build the database
 
 Run the seed script with `sqlcmd`. Use the same `WEBAPP_PASSWORD` that's in `.env`:
 
-```powershell
+```cmd
 sqlcmd -S localhost -E -C -v WEBAPP_PASSWORD="W3bApp_Passw0rd!" -i db\init.sql
 ```
 
 This creates `StoreDb` and `VaultDb`, the over-privileged `webapp` login (sysadmin), turns on `xp_cmdshell`, and writes the flag. You'll see `StoreDb ready` printed at the end.
 
-### 5. Start the lab
+Quick check that it worked:
 
-```powershell
+```cmd
+sqlcmd -S localhost -E -C -Q "SELECT name FROM sys.databases WHERE name IN ('StoreDb','VaultDb');"
+```
+
+---
+
+## 5. Start the lab
+
+Make sure Docker Desktop is running, then:
+
+```cmd
 docker compose up --build
 ```
 
-Docker builds the web app and connects to your Windows database (`host.docker.internal:1433`). When it's up, open **http://localhost:8080**.
-
-Stop it later with `docker compose down`.
+Docker builds the web app and connects to your Windows database (`host.docker.internal:1433`). When it's up, open **http://localhost:8080**. Stop it later with `docker compose down`.
 
 ---
 
@@ -101,13 +128,16 @@ Solution (spoilers): [`steps.md`](steps.md) · [`steps-hebrew.md`](steps-hebrew.
 
 ---
 
-## If the web app can't connect
+## If something doesn't work
 
-- Is SQL Server listening on 1433? Run `Test-NetConnection localhost -Port 1433`.
-- Is mixed-mode auth on, and did you restart the service?
-- Does the firewall allow inbound 1433?
-- Does `WEBAPP_PASSWORD` in `.env` match what you seeded in step 4?
-- `sqlcmd` not found? Install SSMS or the SQL command-line tools.
+- **`winget` not recognized** → install **App Installer** from the Microsoft Store, reopen the terminal.
+- **Docker error / "daemon not running"** → start Docker Desktop, wait until it's green, retry.
+- **`sqlcmd` not found** → `winget search sqlcmd` and install it, then reopen the terminal.
+- **Web app can't reach the database:**
+  - Is SQL Server listening on 1433? `sqlcmd -S localhost -E -C -Q "SELECT 1"` should print `1`.
+  - Is mixed-mode auth on, and did you restart the service (step 2.4–2.5)?
+  - Did the firewall rule get added (step 2.6)?
+  - Does `WEBAPP_PASSWORD` in `.env` match what you seeded in step 4?
 
 ---
 
